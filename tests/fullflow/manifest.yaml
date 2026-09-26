@@ -113,6 +113,7 @@ flow:
       assert:
         - { status: 200 }
         - { json: "$.essay", exists: true }
+        - { json: "$.essay", not_contains: "<think>" }
       error_probes: [invalid_input, duplicate_submit]
 
     - id: dream_referral            # 自伤叙述 → 确定性转介（不走 LLM）

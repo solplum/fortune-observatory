@@ -42,5 +42,8 @@ class SourceOut(StrictModel):
 
 class InterpretResponse(StrictModel):
     essay: str = ""
+    # 思考过程单独成字段随响应发出（不混进 essay）：调用方可渲染为折叠块
+    # （与流式通道 think 事件同语义）；E-R3 修复。
+    thinking: str = ""
     sources: list[SourceOut] = Field(default_factory=list, max_length=24)
     referral: str | None = None

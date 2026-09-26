@@ -15,4 +15,5 @@ docs
 tests
 scripts
 表情包
-*.md
+# 只排根目录文档；skills/ 语料 markdown 必须留在构建上下文（Dockerfile COPY skills）
+/*.md

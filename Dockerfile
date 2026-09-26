@@ -15,6 +15,7 @@ COPY src ./src
 COPY apps/api ./apps/api
 COPY data/rules ./data/rules
 COPY data/ephemeris ./data/ephemeris
+COPY skills ./skills
 COPY apps/observatory/dist ./apps/observatory/dist
 
 RUN chown -R fortune:fortune /srv

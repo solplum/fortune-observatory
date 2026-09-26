@@ -128,3 +128,33 @@ def test_dream_stream_redline_words_pass_through(monkeypatch):
     assert kinds[-1] == "done"
     body_text = "".join(event["text"] for event in events if event["type"] == "delta")
     assert "股票加仓" in body_text
+
+
+def test_dream_referral_resists_split_and_invisible_chars():
+    """自伤转介抗拆字/零宽绕过（2026-09-26 门0 实证）：NFKC+剥零宽后再匹配；
+    常规命中与正常梦不误伤不回归。"""
+    assert dream_service.is_referral("我梦里冒出伤害自 己的念头")
+    assert dream_service.is_referral("梦见自己\u200b自\u200b残了")
+    assert dream_service.is_referral("真的不想活了，醒来还在想")
+    assert not dream_service.is_referral("梦见考试迟到，很焦虑")
+
+
+def test_dream_interpret_nonstream_splits_think_into_own_field():
+    """非流式解梦：思考段进独立 thinking 字段，essay 只留干净正文（E-R3 修复）。"""
+    thinking, body = dream_service._split_think(
+        "<think>analyzing symbols</think>## 解梦\n梦见教室是回归心理。")
+    assert "analyzing" in thinking
+    assert "<think>" not in body and "解梦" in body
+
+    resp = dream_service._parse_interpret(
+        "<think>analyzing</think>{\"essay\": \"梦见教室是回归心理。\", \"sources\": []}")
+    assert resp.essay == "梦见教室是回归心理。"
+    assert resp.thinking == "analyzing"
+    assert "<think>" not in resp.essay
+
+
+def test_dream_interpret_unclosed_think_never_becomes_essay():
+    """无闭合 <think>（生成截断形态）整体归 thinking、正文空 → 调用方显式报错，
+    不再把思考混进 essay 静默返回。"""
+    thinking, body = dream_service._split_think("<think>partial reasoning about the dream")
+    assert "partial reasoning" in thinking and body == ""

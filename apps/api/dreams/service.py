@@ -5,6 +5,7 @@ import json
 import logging
 import re
 import time
+import unicodedata
 from collections.abc import AsyncIterator
 
 import httpx
@@ -32,11 +33,22 @@ _REQUIRED_IDS = ("finished", "agency", "fear_of")
 _REFERRAL_PATTERNS = ("自杀", "轻生", "不想活", "伤害自己", "伤自己", "自残")
 
 
+# 零宽字符按码点显式构造（与 tcm/service.py 同款）：源码保持纯 ASCII，
+# 防格式化器剥掉字面量零宽字符后正则悄悄失效。
+_INVISIBLE_CHARS = re.compile(r"[\s" + "".join(map(chr, (0x200B, 0x200C, 0x200D, 0x2060, 0xFEFF))) + "]+")
+
+
+def _normalize_signal_text(text: str) -> str:
+    """信号匹配前规范化：NFKC 折叠全角/兼容字符，剥掉空白与零宽字符——
+    否则「自 残」「自<零宽>残」这类拆字写法能绕开子串匹配（2026-09-26 门0 实证）。"""
+    return _INVISIBLE_CHARS.sub("", unicodedata.normalize("NFKC", text))
+
+
 def is_referral(dream: str, answers: list | None = None) -> bool:
     # 追问回答与梦正文同等参与自伤信号检查：只查正文时，
     # "梦是朋友的、追问答'怕他轻生'"即可绕过转介直进 LLM。
-    text = compose_query(dream, answers or [])
-    return any(pattern in text for pattern in _REFERRAL_PATTERNS)
+    text = _normalize_signal_text(compose_query(dream, answers or []))
+    return any(_normalize_signal_text(pattern) in text for pattern in _REFERRAL_PATTERNS)
 
 
 def compose_query(dream: str, answers: list) -> str:
@@ -152,7 +164,20 @@ def _referral_result(dream: str) -> InterpretResponse:
     )
 
 
+_THINK_BLOCK = re.compile(r"<think>(.*?)(?:</think>|$)", re.S | re.I)
+
+
+def _split_think(text: str) -> tuple[str, str]:
+    """把模型原始输出拆成 (thinking, 正文)：与流式通道的 think/delta 分流同语义。
+    无闭合 <think>（生成截断形态）整体归入 thinking、正文为空——由调用方显式报错，
+    不再把思考混进 essay 静默返回（E-R3）。"""
+    thinking = "\n".join(m.group(1).strip() for m in _THINK_BLOCK.finditer(text))
+    body = _THINK_BLOCK.sub("", text).strip()
+    return thinking.strip(), body
+
+
 def _parse_interpret(text: str) -> InterpretResponse:
+    thinking, text = _split_think(text)
     start = text.find("{")
     end = text.rfind("}")
     sources: list[SourceOut] = []
@@ -188,7 +213,7 @@ def _parse_interpret(text: str) -> InterpretResponse:
     essay = essay.strip().strip('"')
     if not essay:
         raise AiProviderError("empty essay")
-    return InterpretResponse(essay=essay[:3600], sources=sources[:3])
+    return InterpretResponse(essay=essay[:3600], sources=sources[:3], thinking=thinking[:2000])
 
 
 def extract_sources(text: str) -> list[SourceOut]:
