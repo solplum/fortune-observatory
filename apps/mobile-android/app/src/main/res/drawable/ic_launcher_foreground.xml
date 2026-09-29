@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 简易星盘图形：圆环 + 四芒星 + 中心点 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.6"
+        android:scaleY="0.6"
+        android:pivotX="54"
+        android:pivotY="54">
+        <path
+            android:pathData="M54,10 A44,44 0 1,1 53.9,10 Z"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="5"
+            android:fillColor="#00000000" />
+        <path
+            android:pathData="M54,26 L59,49 L82,54 L59,59 L54,82 L49,59 L26,54 L49,49 Z"
+            android:fillColor="#FFE81A" />
+        <path
+            android:pathData="M54,50 A4,4 0 1,1 53.9,50 Z"
+            android:fillColor="#FFFFFF" />
+    </group>
+</vector>

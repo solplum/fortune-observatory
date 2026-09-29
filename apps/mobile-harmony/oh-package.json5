@@ -1,0 +1,8 @@
+{
+  "modelVersion": "26.0.0",
+  "description": "看运（destiny）HarmonyOS 原生客户端",
+  "dependencies": {
+  },
+  "devDependencies": {
+  }
+}

@@ -58,6 +58,18 @@ apps/web/
 # Security scan artifacts
 apps/observatory/.mimosa/
 
+# HarmonyOS native app build artifacts (apps/mobile-harmony)
+apps/mobile-harmony/oh_modules/
+apps/mobile-harmony/.hvigor/
+apps/mobile-harmony/local.properties
+apps/mobile-harmony/build-last.log
+**/.preview/
+**/.cxx/
+
 # Deployment staging
 .deploy-stage/
 .mimosa/
+
+# video2code hook artifacts
+**/.v2c/
+apps/mobile-*/out/

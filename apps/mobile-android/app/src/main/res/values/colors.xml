@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 奶龙主题（设计规格 §3.3 推荐默认）：paper #fffef6 -->
+    <color name="paper">#FFFEF6</color>
+    <color name="status_bar">#FFFEF6</color>
+    <color name="ic_launcher_background">#0758F7</color>
+</resources>
