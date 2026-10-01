@@ -166,7 +166,7 @@ def test_provider_payload_isolates_prompt_injection_and_omits_secrets(monkeypatc
     assert config.api_key not in serialized
     assert config.context_secret.decode() not in serialized
     assert "context_tokens" not in serialized
-    assert payload.get("thinking") == {"type": "disabled"}
+    assert payload.get("thinking") == {"type": "adaptive"}
 
 
 def test_every_ai_claim_cites_only_known_fact_ids() -> None:

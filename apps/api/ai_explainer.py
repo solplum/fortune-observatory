@@ -422,9 +422,10 @@ USER_DATA_JSON.history（如存在）是本次会话此前的问答摘录，仅�
         ],
         "temperature": 0.2,
         "max_tokens": 4200,
-        # MiniMax M-series honors this and frees the token budget for visible text.
-        # Text-01 ignores it; extra field is harmless.
-        "thinking": {"type": "disabled"},
+        # M3.1+ rejects thinking.type="disabled" (400, code 2013: adaptive
+        # thinking required)；adaptive 让模型自决是否思考，思考进
+        # reasoning_content 不污染正文 JSON。Text-01 忽略该字段，无害。
+        "thinking": {"type": "adaptive"},
     }
     response_format = _response_format(config)
     if response_format is not None:
