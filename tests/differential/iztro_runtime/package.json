@@ -4,6 +4,6 @@
   "private": true,
   "description": "Isolated, lifecycle-disabled runtime verification for the frozen iztro 2.6.1 oracle.",
   "dependencies": {
-    "iztro": "file:../../../data/vendor/iztro/2.6.1/iztro-2.6.1.tgz"
+    "iztro": "2.6.1"
   }
 }

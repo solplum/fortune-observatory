@@ -20,7 +20,8 @@ from typing import Any
 
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from lunar_python import Lunar, Solar
+from lunar_python import Lunar, LunarYear, Solar
+import re
 
 DEFAULT_RULESET = "mainline-cn-v1"
 DEFAULT_TIMEZONE = "Asia/Shanghai"
@@ -221,31 +222,45 @@ def assert_supported_year(year: int) -> None:
 def parse_datetime_string(value: str) -> dict[str, int]:
     normalized = value.strip().replace("T", " ").replace("/", "-").replace("年", "-").replace("月", "-").replace("日", " ")
     normalized = normalized.replace("时", ":").replace("點", ":").replace("点", ":").replace("分", "").replace("秒", "")
-    parts = normalized.split()
-    if not parts:
-        raise ValueError("time_input 不能为空")
-    date_part = parts[0]
-    date_bits = [int(bit) for bit in date_part.split("-") if bit]
-    if len(date_bits) != 3:
-        raise ValueError("日期格式需为 YYYY-MM-DD")
-    assert_supported_year(date_bits[0])
-    time_bits = [0, 0, 0]
-    if len(parts) > 1:
-        raw_time = parts[1]
-        tmp = [int(bit) for bit in raw_time.split(":") if bit]
-        if len(tmp) >= 2:
-            time_bits[0] = tmp[0]
-            time_bits[1] = tmp[1]
-        if len(tmp) >= 3:
-            time_bits[2] = tmp[2]
-    return {
-        "year": date_bits[0],
-        "month": date_bits[1],
-        "day": date_bits[2],
-        "hour": time_bits[0],
-        "minute": time_bits[1],
-        "second": time_bits[2],
-    }
+    match = re.fullmatch(r"([0-9]{4})-([0-9]{1,2})-([0-9]{1,2})(?:\s+([0-9]{1,2}):([0-9]{1,2})(?::([0-9]{1,2}))?)?", normalized.strip())
+    if not match:
+        raise ValueError("日期格式需为 YYYY-MM-DD [HH:MM[:SS]]")
+    raw = dict(zip(("year", "month", "day", "hour", "minute", "second"), (int(v or 0) for v in match.groups())))
+    assert_supported_year(raw["year"])
+    return raw
+
+
+def strict_int(value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, str)) or not re.fullmatch(r"[0-9]+", str(value)):
+        raise ValueError("日期时间字段必须为整数")
+    return int(value)
+
+
+def leap_flag(value: Any) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError("is_leap_month 必须为布尔值")
+    return value
+
+
+def validate_local_time(value: datetime) -> None:
+    # Reject gaps and folds rather than silently choosing an instant.
+    valid = {candidate.astimezone(timezone.utc) for fold in (0, 1)
+             if (candidate := value.replace(fold=fold)).astimezone(timezone.utc).astimezone(value.tzinfo).replace(tzinfo=None) == value.replace(tzinfo=None)}
+    if not valid:
+        raise ValueError("当地时间不存在（夏令时跳时），请改用有效时间")
+    if len(valid) > 1:
+        raise ValueError("当地时间有歧义（夏令时回拨），请改用 UTC 时间和时区")
+
+
+def term_lunar(normalized: NormalizedInput) -> Any:
+    # lunar-python's solar-term timestamps are Beijing standard time (UTC+08),
+    # not the historical/DST rules of Asia/Shanghai.
+    dt = normalized.solar_dt.astimezone(timezone(timedelta(hours=8)))
+    return Solar.fromYmdHms(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second).getLunar()
+
+
+def term_datetime(term: Any, tz: Any) -> datetime:
+    return datetime.fromisoformat(term.getSolar().toYmdHms()).replace(tzinfo=timezone(timedelta(hours=8))).astimezone(tz)
 
 
 def resolve_timezone(location: dict[str, Any], warnings: list[str]) -> str:
@@ -283,12 +298,12 @@ def normalize_input(payload: dict[str, Any]) -> NormalizedInput:
         use_now = False
         if isinstance(original_time_input, dict):
             raw = {
-                "year": int(original_time_input["year"]),
-                "month": int(original_time_input["month"]),
-                "day": int(original_time_input["day"]),
-                "hour": int(original_time_input.get("hour", 0)),
-                "minute": int(original_time_input.get("minute", 0)),
-                "second": int(original_time_input.get("second", 0)),
+                "year": strict_int(original_time_input["year"]),
+                "month": strict_int(original_time_input["month"]),
+                "day": strict_int(original_time_input["day"]),
+                "hour": strict_int(original_time_input.get("hour", 0)),
+                "minute": strict_int(original_time_input.get("minute", 0)),
+                "second": strict_int(original_time_input.get("second", 0)),
             }
         else:
             raw = parse_datetime_string(str(original_time_input))
@@ -299,21 +314,27 @@ def normalize_input(payload: dict[str, Any]) -> NormalizedInput:
         use_now = False
         if isinstance(original_time_input, dict):
             raw = {
-                "year": int(original_time_input["year"]),
-                "month": int(original_time_input["month"]),
-                "day": int(original_time_input["day"]),
-                "hour": int(original_time_input.get("hour", 0)),
-                "minute": int(original_time_input.get("minute", 0)),
-                "second": int(original_time_input.get("second", 0)),
-                "is_leap_month": bool(original_time_input.get("is_leap_month", False)),
+                "year": strict_int(original_time_input["year"]),
+                "month": strict_int(original_time_input["month"]),
+                "day": strict_int(original_time_input["day"]),
+                "hour": strict_int(original_time_input.get("hour", 0)),
+                "minute": strict_int(original_time_input.get("minute", 0)),
+                "second": strict_int(original_time_input.get("second", 0)),
+                "is_leap_month": leap_flag(original_time_input.get("is_leap_month", payload.get("is_leap_month", False))),
             }
         else:
             raw = parse_datetime_string(str(original_time_input))
-            raw["is_leap_month"] = bool(payload.get("is_leap_month", False))
+            raw["is_leap_month"] = leap_flag(payload.get("is_leap_month", False))
         # 统一在解析后年份上兜底年域（dict 直入不经 parse_datetime_string）
         assert_supported_year(raw["year"])
         leap_month = bool(raw.get("is_leap_month", False))
         lunar_month = -raw["month"] if leap_month else raw["month"]
+        if not 1 <= raw["month"] <= 12:
+            raise ValueError("农历月份必须为 1-12，闰月用 is_leap_month 指定")
+        month_obj = LunarYear.fromYear(raw["year"]).getMonth(lunar_month)
+        if month_obj is None or not 1 <= raw["day"] <= month_obj.getDayCount():
+            raise ValueError("农历日期或闰月无效")
+        datetime(2000, 1, 1, raw["hour"], raw["minute"], raw["second"])
         lunar_obj = Lunar.fromYmdHms(raw["year"], lunar_month, raw["day"], raw["hour"], raw["minute"], raw["second"])
         solar_obj = lunar_obj.getSolar()
         solar_dt = datetime(
@@ -328,6 +349,10 @@ def normalize_input(payload: dict[str, Any]) -> NormalizedInput:
         lunar_input = raw
     else:
         raise ValueError(f"不支持的 calendar_type: {calendar_type}")
+
+    assert_supported_year(solar_dt.year)
+    if not use_now:
+        validate_local_time(solar_dt)
 
     return NormalizedInput(
         question_type=str(payload.get("question_type") or "").strip(),
@@ -359,8 +384,8 @@ def build_solar_and_lunar(normalized: NormalizedInput) -> tuple[Solar, Any]:
 
 
 def active_jie(lunar: Any) -> tuple[str, Any, Any]:
-    prev_jie = lunar.getPrevJie(False)
-    next_jie = lunar.getNextJie(False)
+    prev_jie = lunar.getPrevJieQi(False)
+    next_jie = lunar.getNextJieQi(False)
     if prev_jie is None:
         raise ValueError("无法确定当前节令")
     return prev_jie.getName(), prev_jie, next_jie
@@ -480,26 +505,20 @@ def detect_patterns(palaces: list[dict[str, Any]], zhifu: dict, xunshou_palace: 
                 "nature": "凶",
             })
 
-        # 3. 反吟：天盘干克地盘干 且 两干五行相克（对冲性质）
-        if sky_stem and earth_stem:
-            sky_elem = STEM_ELEMENT.get(sky_stem)
-            earth_elem = STEM_ELEMENT.get(earth_stem)
-            if sky_elem and earth_elem and WUXING_KE.get(sky_elem) == earth_elem and WUXING_KE.get(earth_elem) == sky_elem:
-                patterns.append({
-                    "name": "反吟",
-                    "palace": palace_no,
-                    "detail": f"天{sky_stem}({sky_elem})与地{earth_stem}({earth_elem})互克",
-                    "nature": "凶",
-                })
+        # 3. 星反吟：九星落在本宫的对宫（洛书对宫之和为十）。
+        star_home = dict(zip(STAR_RING, ROTATION_RING))
+        if star in star_home and palace_no == 10 - star_home[star]:
+            patterns.append({"name": "反吟", "palace": palace_no,
+                             "detail": f"{star}落本宫对宫", "nature": "凶"})
 
-        # 4. 门迫：门的五行被所在宫的五行所克
+        # 4. 门迫：门的五行克所在宫的五行
         if door:
             door_elem = DOOR_ELEMENT.get(door)
-            if door_elem and WUXING_KE.get(palace_elem) == door_elem:
+            if door_elem and WUXING_KE.get(door_elem) == palace_elem:
                 patterns.append({
                     "name": "门迫",
                     "palace": palace_no,
-                    "detail": f"{door}({door_elem})受{p['name']}({palace_elem})克",
+                    "detail": f"{door}({door_elem})克{p['name']}({palace_elem})",
                     "nature": "凶",
                 })
 
@@ -521,7 +540,8 @@ def detect_patterns(palaces: list[dict[str, Any]], zhifu: dict, xunshou_palace: 
 def build_chart(normalized: NormalizedInput, solar: Solar, lunar: Any) -> dict[str, Any]:
     warnings = list(normalized.warnings)
 
-    current_jie_name, prev_jie, next_jie = active_jie(lunar)
+    season_lunar = term_lunar(normalized)
+    current_jie_name, prev_jie, next_jie = active_jie(season_lunar)
     dun_type = "阳遁" if current_jie_name in YANG_TERMS else "阴遁"
     day_ganzhi = lunar.getDayInGanZhiExact()
     yuan = compute_yuan(day_ganzhi)
@@ -558,7 +578,7 @@ def build_chart(normalized: NormalizedInput, solar: Solar, lunar: Any) -> dict[s
         palace_order = rotate_to_start(reverse_ring, time_palace)
         star_order = rotate_to_start(reverse_star_ring, STAR_RING[ROTATION_RING.index(xunshou_palace)])
         door_order = rotate_to_start(reverse_door_ring, DOOR_RING[ROTATION_RING.index(xunshou_palace)])
-        god_order = GOD_RING_YIN
+        god_order = GOD_RING_YANG  # 宫序已逆排，神序不再反转
         outer_earth = [earth_plate[palace] for palace in reverse_ring]
 
     # 天盘起点：旬首所遁之仪代表甲，是天盘的起排参照
@@ -578,10 +598,8 @@ def build_chart(normalized: NormalizedInput, solar: Solar, lunar: Any) -> dict[s
     zhifu = {"star": star_map[time_palace], "palace": time_palace}
     zhishi = {"door": door_map[time_palace], "palace": time_palace}
 
-    active_jie_dt = datetime.fromisoformat(prev_jie.getSolar().toYmdHms().replace(" ", "T")).replace(tzinfo=normalized.solar_dt.tzinfo)
-    next_jie_dt = None
-    if next_jie is not None:
-        next_jie_dt = datetime.fromisoformat(next_jie.getSolar().toYmdHms().replace(" ", "T")).replace(tzinfo=normalized.solar_dt.tzinfo)
+    active_jie_dt = term_datetime(prev_jie, normalized.solar_dt.tzinfo)
+    next_jie_dt = term_datetime(next_jie, normalized.solar_dt.tzinfo) if next_jie else None
     if abs(normalized.solar_dt - active_jie_dt) <= timedelta(hours=24):
         warnings.append("当前时间距离节令起点较近，属于节气边界附近。")
     if next_jie_dt and abs(next_jie_dt - normalized.solar_dt) <= timedelta(hours=24):
@@ -612,21 +630,21 @@ def build_chart(normalized: NormalizedInput, solar: Solar, lunar: Any) -> dict[s
         day_gan_info["note"] = None
 
     # 年干落宫
-    year_ganzhi = lunar.getYearInGanZhiExact()
+    year_ganzhi = season_lunar.getYearInGanZhiExact()
     year_gan = year_ganzhi[0]
     if year_gan == "甲":
-        year_gan_info = find_gan_palace(earth_plate, "戊")  # 甲子旬遁戊
-        year_gan_info["note"] = "年干为甲，取戊代入"
+        year_gan_info = find_gan_palace(earth_plate, XUNSHOU_TO_HIDDEN_YI[year_ganzhi])
+        year_gan_info["note"] = f"年干为甲，取{year_ganzhi}所遁之仪 {XUNSHOU_TO_HIDDEN_YI[year_ganzhi]} 入盘"
     else:
         year_gan_info = find_gan_palace(earth_plate, year_gan)
         year_gan_info["note"] = None
 
     # 月干落宫
-    month_ganzhi = lunar.getMonthInGanZhiExact()
+    month_ganzhi = season_lunar.getMonthInGanZhiExact()
     month_gan = month_ganzhi[0]
     if month_gan == "甲":
-        month_gan_info = find_gan_palace(earth_plate, "戊")  # 甲子旬遁戊
-        month_gan_info["note"] = "月干为甲，取戊代入"
+        month_gan_info = find_gan_palace(earth_plate, XUNSHOU_TO_HIDDEN_YI[month_ganzhi])
+        month_gan_info["note"] = f"月干为甲，取{month_ganzhi}所遁之仪 {XUNSHOU_TO_HIDDEN_YI[month_ganzhi]} 入盘"
     else:
         month_gan_info = find_gan_palace(earth_plate, month_gan)
         month_gan_info["note"] = None
@@ -692,9 +710,9 @@ def build_chart(normalized: NormalizedInput, solar: Solar, lunar: Any) -> dict[s
         "star_index": star_index,
         "detected_patterns": detected_patterns,
         "active_jie": current_jie_name,
-        "active_jie_started_at": prev_jie.getSolar().toYmdHms(),
+        "active_jie_started_at": active_jie_dt.isoformat(),
         "next_jie": next_jie.getName() if next_jie else None,
-        "next_jie_at": next_jie.getSolar().toYmdHms() if next_jie else None,
+        "next_jie_at": next_jie_dt.isoformat() if next_jie_dt else None,
         "grid_order": GRID_ORDER,
         "palaces": palaces,
         "warnings": warnings,
@@ -705,6 +723,7 @@ def build_output(payload: dict[str, Any]) -> dict[str, Any]:
     normalized = normalize_input(payload)
     solar, lunar = build_solar_and_lunar(normalized)
     chart = build_chart(normalized, solar, lunar)
+    season_lunar = term_lunar(normalized)
 
     return {
         "normalized_input": {
@@ -739,8 +758,8 @@ def build_output(payload: dict[str, Any]) -> dict[str, Any]:
             },
         },
         "ganzhi": {
-            "year": lunar.getYearInGanZhiExact(),
-            "month": lunar.getMonthInGanZhiExact(),
+            "year": season_lunar.getYearInGanZhiExact(),
+            "month": season_lunar.getMonthInGanZhiExact(),
             "day": lunar.getDayInGanZhiExact(),
             "time": lunar.getTimeInGanZhi(),
             "day_xun_exact": lunar.getDayXunExact(),
@@ -755,6 +774,7 @@ def build_output(payload: dict[str, Any]) -> dict[str, Any]:
             "dun_type_rule": "冬至到芒种用阳遁，夏至到大雪用阴遁，按当前节令判定。",
             "yuan_rule": "按日干支所在六十甲子序列，每 5 日一元，循环上元/中元/下元。",
             "ju_rule": "按当前节令和三元，从固定定局表取局数。",
+            "method_limitations": "简化三元循环，非拆补或置闰法；值使随值符落时干宫，未实现逐时推移。年/月柱按同一瞬间北京时间，日/时柱按输入当地钟表及晚子时换日。",
             "center_hosting_rule": "中宫相关判断一律寄坤处理。",
         },
         "chart": {

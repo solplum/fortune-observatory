@@ -62,11 +62,11 @@ def test_qimen_chart_deterministic_fields() -> None:
     body = res.json()
     # 与差分基线（skills/qimen-dunjia references/examples.md 示例 1）一致
     assert body["chart"]["dun_type"] == "阳遁"
-    assert body["chart"]["ju_number"] == 1
+    assert body["chart"]["ju_number"] == 3
     assert body["chart"]["xunshou"] == "甲辰"
     assert body["chart"]["hidden_yi"] == "壬"
-    assert body["chart"]["zhifu"]["star"] == "天芮"
-    assert body["chart"]["zhishi"]["door"] == "死门"
+    assert body["chart"]["zhifu"]["star"] == "天柱"
+    assert body["chart"]["zhishi"]["door"] == "惊门"
     assert body["ganzhi"]["day"] == "丁酉"
     assert body["used_now"] is False
     assert body["jieqi"]["active_jie"]
@@ -107,9 +107,9 @@ def test_qimen_chart_validation() -> None:
 
 def test_qimen_stream_happy_path(monkeypatch) -> None:
     async def fake_stream(request: QimenInterpretRequest) -> AsyncIterator[dict]:
-        assert request.chart.chart.ju_number == 1
+        assert request.chart.chart.ju_number == 3
         yield {"type": "think", "text": "思考中"}
-        yield {"type": "delta", "text": "阳遁一局"}
+        yield {"type": "delta", "text": "阳遁三局"}
         yield {"type": "delta", "text": "，可以缓动。"}
         yield {"type": "done"}
 
@@ -120,7 +120,7 @@ def test_qimen_stream_happy_path(monkeypatch) -> None:
     assert res.headers["content-type"].startswith("text/event-stream")
     events = _parse_sse(res.text)
     assert events[0] == {"type": "think", "text": "思考中"}
-    assert [e["text"] for e in events if e["type"] == "delta"] == ["阳遁一局", "，可以缓动。"]
+    assert [e["text"] for e in events if e["type"] == "delta"] == ["阳遁三局", "，可以缓动。"]
     assert events[-1] == {"type": "done"}
 
 

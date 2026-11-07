@@ -33,7 +33,7 @@ def _payload(time_input: str, *, timezone: str = "Asia/Shanghai", country: str =
 
 # (time_input, 覆盖点)
 FIXED_CASES: tuple[tuple[str, str], ...] = (
-    ("2026-03-24 10:30", "基准例（skill 示例：阳遁1局）"),
+    ("2026-03-24 10:30", "基准例（skill 示例：阳遁3局）"),
     ("2026-07-15 14:00", "夏至后阴遁"),
     ("2025-12-21 12:00", "冬至交节附近（节气边界提醒）"),
     ("2025-12-23 09:00", "冬至后阳遁"),
@@ -71,7 +71,7 @@ SPECIAL_CASES: tuple[tuple[dict, str], ...] = (
     ({
         "question_type": "求财",
         "question_goal": "这笔交易能不能谈成",
-        "time_input": {"year": 2026, "month": 6, "day": 15, "hour": 10, "minute": 30, "second": 0},
+        "time_input": {"year": 2025, "month": 6, "day": 15, "hour": 10, "minute": 30, "second": 0},
         "calendar_type": "lunar",
         "is_leap_month": True,
         "location": {"country": "中国", "city": "成都", "timezone": ""},
@@ -123,4 +123,4 @@ def test_qimen_scan_cases_hit_expected_branches() -> None:
         assert out["warnings"], f"扫描用例应带警告（{note}）"
     out = build_output(_payload("2026-03-24 10:30"))
     assert out["chart"]["dun_type"] == "阳遁"
-    assert out["chart"]["ju_number"] == 1
+    assert out["chart"]["ju_number"] == 3

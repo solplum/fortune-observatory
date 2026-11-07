@@ -20,7 +20,8 @@ from ai_explainer import (
     get_provider_config,
     reserve_daily_budget,
 )
-from dreams.lore import _WORK_TITLES, skill_profile
+from dreams.lore import source_excerpts, skill_profile
+from verified_sources import adjacent_sources
 from dreams.models import InterpretRequest, InterpretResponse, QuestionOut, QuestionsResponse, SourceOut
 from dreams.prompts import INTERPRET_JSON, QUESTIONS, SYSTEM
 from reading_agent import stream_completion
@@ -30,7 +31,7 @@ logger = logging.getLogger("fortune.dreams")
 
 _REQUIRED_IDS = ("finished", "agency", "fear_of")
 # 触发转介的自伤信号：只依据梦的明确叙述，不做推断
-_REFERRAL_PATTERNS = ("自杀", "轻生", "不想活", "伤害自己", "伤自己", "自残")
+_REFERRAL_PATTERNS = ("自杀", "轻生", "不想活", "伤害自己", "伤自己", "自残", "自殺", "輕生", "不想活", "傷害自己", "自殘")
 
 
 # 零宽字符按码点显式构造（与 tcm/service.py 同款）：源码保持纯 ASCII，
@@ -105,7 +106,10 @@ async def _chat(system: str, user: str) -> str:
         started = time.monotonic()
         response = None
         for attempt in range(_PROVIDER_RETRY_ATTEMPTS):
-            response = await client.post(
+            remaining = 56.0 - (time.monotonic() - started)
+            if remaining <= 0:
+                raise AiProviderError("provider deadline exceeded")
+            response = await asyncio.wait_for(client.post(
                 f"{config.base_url}/chat/completions",
                 headers={
                     "authorization": f"Bearer {config.api_key}",
@@ -120,14 +124,15 @@ async def _chat(system: str, user: str) -> str:
                         {"role": "user", "content": user},
                     ],
                 },
-            )
+                timeout=httpx.Timeout(min(timeout_seconds, remaining), connect=min(3.0, remaining)),
+            ), timeout=remaining)
             if _retry_provider_status(response.status_code) and attempt < _PROVIDER_RETRY_ATTEMPTS - 1:
                 if time.monotonic() - started > 56.0:
                     logger.warning("dream provider retry skipped: wall clock exhausted attempt=%s", attempt + 1)
                     break
                 logger.warning("dream provider retryable failure status=%s attempt=%s",
                                response.status_code, attempt + 1)
-                await asyncio.sleep(_PROVIDER_RETRY_BASE_SECONDS * (attempt + 1))
+                await asyncio.sleep(min(_PROVIDER_RETRY_BASE_SECONDS * (attempt + 1), max(0, 56.0 - (time.monotonic() - started))))
                 continue
             break
         try:
@@ -142,6 +147,12 @@ async def _chat(system: str, user: str) -> str:
 
 
 async def generate_questions(dream: str) -> QuestionsResponse:
+    if is_referral(dream):
+        return QuestionsResponse(questions=[
+            QuestionOut(id="finished", label="醒来后，你现在安全吗？"),
+            QuestionOut(id="agency", label="这些伤害自己的念头现在还在吗？"),
+            QuestionOut(id="fear_of", label="现在能联系一位信任的人陪着你吗？"),
+        ])
     config = _provider()
     if config is None:
         return QuestionsResponse(questions=heuristic_questions(dream))
@@ -178,70 +189,37 @@ def _split_think(text: str) -> tuple[str, str]:
 
 def _parse_interpret(text: str) -> InterpretResponse:
     thinking, text = _split_think(text)
-    start = text.find("{")
-    end = text.rfind("}")
-    sources: list[SourceOut] = []
-    essay = ""
-    if start >= 0 and end > start:
+    stripped = text.strip()
+    if stripped.startswith("```json") or stripped.startswith("```\n"):
+        stripped = stripped.split("\n", 1)[-1].strip() if "\n" in stripped else stripped[7:].strip()
+        if stripped.endswith("```"):
+            stripped = stripped[:-3].strip()
+    # Structured output must parse completely. Never show truncated JSON as prose
+    # or trim ordinary prose just because it contains braces or the word sources.
+    if stripped.startswith("{") or stripped.startswith("["):
         try:
-            payload = json.loads(text[start:end + 1])
-            essay = str(payload.get("essay") or "").strip()
-            for item in payload.get("sources") or []:
-                if not isinstance(item, dict):
-                    continue
-                work = str(item.get("work") or "").strip()
-                quote = str(item.get("quote") or "").strip()[:80]
-                if work in _WORK_TITLES.values() and quote:
-                    sources.append(SourceOut(work=work, quote=quote, channel="字面"))
-        except ValueError:
-            essay = ""
-    if not essay:
-        # 模型未按 JSON 回包时降级取正文；先从全文兜底提取口径引用，再剥掉 sources 段与前缀
-        for work in _WORK_TITLES.values():
-            hit = re.search(re.escape(work) + r".{0,24}?quote[\"：:]\s*[\"「『]?([^\"「」『』】）)\n]{6,60})", text)
-            if hit:
-                quote = hit.group(1).strip().strip('"「」『』【】（）()，。；')
-                if quote and not quote.startswith("quote"):
-                    sources.append(SourceOut(work=work, quote=quote[:60], channel="近邻"))
-        essay = text.strip()
+            payload = json.loads(stripped)
+            if not isinstance(payload, dict) or not isinstance(payload.get("essay"), str):
+                raise ValueError("invalid essay")
+            essay = payload["essay"].strip()
+        except (ValueError, TypeError) as error:
+            raise AiProviderError("malformed dream response") from error
+    else:
+        essay = stripped
         for prefix in ("解梦正文：", "解梦正文:", "正文：", "正文:"):
             if essay.startswith(prefix):
-                essay = essay[len(prefix):]
-        marker = re.search(r"\s*sources\s*[:：]", essay)
-        if marker:
-            essay = essay[:marker.start()]
-    essay = essay.strip().strip('"')
+                essay = essay[len(prefix):].strip()
+                break
     if not essay:
         raise AiProviderError("empty essay")
-    return InterpretResponse(essay=essay[:3600], sources=sources[:3], thinking=thinking[:2000])
+    essay = essay[:3600]
+    # Metadata alone is not evidence: require the cited quote in the shown essay.
+    return InterpretResponse(essay=essay, sources=extract_sources(essay), thinking=thinking[:2000])
 
 
 def extract_sources(text: str) -> list[SourceOut]:
-    """从自由文本正文提取《著作》引用与邻近引句（流式收尾用）。
-
-    模型按提示词在正文中引用口径著作（书名号 + 引句），这里扫全文抓
-    书名号条目，并在前后窗口内找成对引句；最多 3 条，去重。
-    """
-    sources: list[SourceOut] = []
-    seen_works: set[str] = set()
-    for match in re.finditer(r"《([^《》]{2,20})》", text):
-        work = match.group(1).strip()
-        if not work or work in seen_works:
-            continue
-        window_start = max(0, match.start() - 80)
-        window = text[window_start:min(len(text), match.end() + 80)]
-        quote_match = re.search(r"[“\"「]([^“”\"」]{6,60})[”\"」]", window)
-        if not quote_match:
-            continue
-        quote = quote_match.group(1).strip().strip('"「」『』【】（）()，。；…—')
-        if not quote or quote in seen_works:
-            continue
-        seen_works.add(work)
-        seen_works.add(quote)
-        sources.append(SourceOut(work=f"《{work}》", quote=quote, channel="近邻"))
-        if len(sources) >= 3:
-            break
-    return sources
+    return [SourceOut(work=f"《{title}》", quote=quote, channel="字面")
+            for title, quote in adjacent_sources(text, source_excerpts())]
 
 
 async def interpret_dream_request(request: InterpretRequest) -> InterpretResponse:
@@ -276,7 +254,7 @@ async def interpret_dream_request(request: InterpretRequest) -> InterpretRespons
 # 流式版：不再要求 JSON 回包，直接输出解梦正文；引用来源在收尾时后端提取。
 _INTERPRET_STREAM = (
     "直接输出解梦正文（Markdown 分节书写），不要 JSON、不要代码块。"
-    "行文中引用口径著作时明确写出书名与原句（如《梦的解析》），先引原句再讲白话。"
+    "只能引用实际注入的学习笔记标题和逐字原句，格式为《笔记标题》：“原句”。不可称为荣格或弗洛伊德的原话，不能编造书名或引文，没有合适引文就不引用。"
     "结尾固定两节：「## 可以先做」（2-3 条具体、可执行的动作）与「## 注意」（1 条单句提醒）。"
 )
 

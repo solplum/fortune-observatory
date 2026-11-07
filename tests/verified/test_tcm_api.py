@@ -117,7 +117,7 @@ def _install_sse_client(monkeypatch, body: bytes) -> None:
 def test_tcm_stream_protocol_and_disclaimer_tail(monkeypatch) -> None:
     body = _sse([
         "<think>", "先辨六经", "</think>",
-        "我跟你说，这是太阳中风，", "《伤寒论》第12条讲：「太阳中风，阳浮而阴弱」。",
+        "我跟你说，可以先了解八纲概念，", "《中医八纲学习摘录》：「中医八纲：阴阳、表里、虚实、寒热。」",
     ])
     _install_sse_client(monkeypatch, body)
     monkeypatch.setattr(tcm_service, "_provider", lambda: FakeConfig())

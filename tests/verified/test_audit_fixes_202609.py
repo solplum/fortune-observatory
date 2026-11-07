@@ -385,8 +385,11 @@ def test_qimen_engine_year_domain_on_parsed_year():
     """引擎侧兜底：string 与 dict 直入路径都在解析后的年份上做年域校验。"""
     from fortune_core.qimen import engine as qimen_engine
 
-    with pytest.raises(ValueError, match="1849-2150"):
+    # Signed/malformed dates are now rejected before numeric year-domain checks.
+    with pytest.raises(ValueError, match="日期格式"):
         qimen_engine.parse_datetime_string("-9999-01-01")
+    with pytest.raises(ValueError, match="1849-2150"):
+        qimen_engine.parse_datetime_string("9999-01-01")
     with pytest.raises(ValueError, match="1849-2150"):
         qimen_engine.normalize_input({
             "question_type": "事业", "question_goal": "x", "calendar_type": "solar",

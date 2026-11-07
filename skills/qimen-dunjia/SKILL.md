@@ -48,7 +48,7 @@ compatibility: Requires Python 3.11+, lunar_python, and tzdata; run scripts/qime
 - 体系：时家转盘奇门
 - 默认时区：`Asia/Shanghai`
 - 默认适用区域：中国大陆优先
-- 定局：置闰法工程化实现
+- 定局：按二十四节气与简化三元循环查表（非置闰法）；值使随值符，不做逐时独立推移
 - 中宫/寄宫：中宫相关判断一律寄坤处理
 
 详细规则见 `references/ruleset-mainline.md`。

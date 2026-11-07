@@ -75,6 +75,7 @@ FORTUNE_LORE = """【运势断法框架】
 
 _LORE_BY_BUNDLE: dict[str, str] = {
     "ziwei.chart": ZIWEI_LORE,
+    "bazi.chart": BAZI_LORE,
     "qizheng.chart": QIZHENG_LORE,
     "fortune.daily": FORTUNE_LORE,
     "fortune.period": FORTUNE_LORE,
@@ -113,11 +114,13 @@ _SKILL_FRAMEWORKS: tuple[tuple[str, str, str], ...] = (
 _FRAMEWORK_CAP = 12000
 
 
-@lru_cache(maxsize=1)
-def skill_canon() -> str:
+@lru_cache(maxsize=8)
+def skill_canon(systems: frozenset[str] = frozenset({"bazi", "ziwei-doushu"})) -> str:
     """skill references 原文 + SKILL.md 分析框架整包；文件缺失时跳过该份，不阻断解读。"""
     parts: list[str] = []
     for title, rel in _SKILL_SOURCES:
+        if rel.split("/")[1] not in systems:
+            continue
         try:
             text = (PROJECT_ROOT / rel).read_text(encoding="utf-8")
         except OSError:
@@ -125,6 +128,8 @@ def skill_canon() -> str:
         if text.strip():
             parts.append(f"≪{title}》\n{text[:_PER_FILE_CAP]}")
     for title, rel, marker in _SKILL_FRAMEWORKS:
+        if rel.split("/")[1] not in systems:
+            continue
         try:
             text = (PROJECT_ROOT / rel).read_text(encoding="utf-8")
         except OSError:
@@ -145,19 +150,15 @@ _SKILL_RULE = (
 
 
 def lore_for_bundle_types(bundle_types: set[str]) -> str:
-    """导航框架 + skill 口径原文整包 + 风格指南；组合包取首个命中框架。"""
-    canon = skill_canon()
-    skill_block = f"{_SKILL_RULE}\n\n{canon}" if canon else ""
-    for bundle_type in (
-        "ziwei.chart",
-        "qizheng.chart",
-        "fortune.daily",
-        "fortune.period",
-        "fortune.window",
-    ):
-        if bundle_type in bundle_types:
-            return _LORE_BY_BUNDLE[bundle_type] + "\n\n" + skill_block + "\n\n" + GENERAL_STYLE_GUIDE
-    for bundle_type in ("domain.health", "domain.relationship", "domain.career", "domain.wealth"):
-        if bundle_type in bundle_types:
-            return _LORE_BY_BUNDLE[bundle_type] + "\n\n" + skill_block + "\n\n" + GENERAL_STYLE_GUIDE
-    return GENERAL_STYLE_GUIDE + ("\n\n" + skill_block if skill_block else "")
+    """Select all relevant frameworks, with canon limited to the actual systems."""
+    systems: set[str] = set()
+    if "bazi.chart" in bundle_types:
+        systems.add("bazi")
+    if any(t == "ziwei.chart" or t.startswith(("fortune.", "domain.")) for t in bundle_types):
+        systems.add("ziwei-doushu")
+    canon = skill_canon(frozenset(systems))
+    parts = list(dict.fromkeys(_LORE_BY_BUNDLE[t] for t in sorted(bundle_types) if t in _LORE_BY_BUNDLE))
+    if canon:
+        parts.append(f"{_SKILL_RULE}\n\n{canon}")
+    parts.append(GENERAL_STYLE_GUIDE)
+    return "\n\n".join(parts)

@@ -18,6 +18,8 @@ from pathlib import Path
 
 import httpx
 
+from lore import QIZHENG_LORE
+
 from ai_explainer import (
     _PROVIDER_RETRY_ATTEMPTS,
     _PROVIDER_RETRY_BASE_SECONDS,
@@ -51,10 +53,10 @@ _BAZI_CORPUS = (
 
 _corpus_cache: dict[str, str] = {}
 
-# 紫微系 bundle：运势（fortune.*）、七政（qizheng）、领域（domain.*）与紫微排盘本身，
+# 紫微系 bundle：运势（fortune.*）、领域（domain.*）与紫微排盘本身，
 # 这些语境的 facts 以紫微为主，解读统一配紫微语料；八字语料只在 bazi.chart 出现时并入。
 _ZIWEI_BUNDLE_TYPES = frozenset({
-    "ziwei.chart", "qizheng.chart",
+    "ziwei.chart",
     "fortune.daily", "fortune.period", "fortune.window",
 })
 
@@ -92,6 +94,9 @@ def corpus_for_bundle_types(bundle_types: set[str]) -> str:
             text = _load_corpus(relative)
             total += len(text)
             parts.append(f"===== 语料：{relative} =====\n{text}")
+    if "qizheng.chart" in bundle_types:
+        parts.append(QIZHENG_LORE)
+        total += len(QIZHENG_LORE)
     if total > _CORPUS_CHAR_BUDGET:
         raise AiProviderError("reading corpus exceeds configured budget")
     return "\n\n".join(parts)
@@ -114,6 +119,16 @@ USER_DATA_JSON.facts 是服务端核验过的盘面事实；涉及用户盘面�
 术语规则：只用八字术语（四柱、十神、大运、旺衰、刑冲合害），禁止使用紫微术语（宫位、星曜、四化、大限）——两套体系严格区分，不得把十神说成宫位或把大运说成大限。
 """ + _SYSTEM_COMMON_TAIL
 
+_SYSTEM_PREAMBLE_QIZHENG = """你是「看运」的七政四余传统文化解读助手。
+USER_DATA_JSON.facts 是服务端核验过的盘面事实；命宫、星体、宿度、恩难仇用与行限均以 facts 为准，禁止补算或虚构。
+只使用七政四余体系，不把紫微四化、十四主星或八字十神当作七政规则。给出的框架是现代概括，不是古籍逐字引文；没有可核对的原文时不得编造引文、篇名或页码。
+""" + _SYSTEM_COMMON_TAIL
+
+_SYSTEM_PREAMBLE_MULTI = """你是「看运」的传统命理文化解读助手。
+按 facts 的体系分别解读，只采用对应的语料。八字、紫微斗数与七政四余独立成节，禁止把十神、四化、恩难仇用混为同一规则。结论不一致时如实说明，不强行调和。
+具体盘面只以服务端核验过的 facts 为准，不补算或虚构。不得编造未提供的古籍引文。
+""" + _SYSTEM_COMMON_TAIL
+
 # 合参 preamble 保留用于向后兼容（旧调用）；前台新流程已拆分为单体系双流。
 _SYSTEM_PREAMBLE = """你是坐镇「看运」产品中的资深命理解读师，精通紫微斗数与子平八字，下方语料即你的案头原典。
 USER_DATA_JSON.facts 是服务端核验过的盘面事实；涉及用户盘面的具体定位（宫位、星曜、四化、柱位、十神、大运）必须以事实为准，禁止虚构盘面上不存在的星曜、宫位或柱位。
@@ -134,7 +149,12 @@ def build_reading_system(bundle_types: set[str]) -> str:
         for t in bundle_types
     )
     has_bazi = "bazi.chart" in bundle_types
-    if has_bazi and not has_ziwei:
+    has_qizheng = "qizheng.chart" in bundle_types
+    if has_qizheng and (has_bazi or has_ziwei):
+        preamble = _SYSTEM_PREAMBLE_MULTI
+    elif has_qizheng:
+        preamble = _SYSTEM_PREAMBLE_QIZHENG
+    elif has_bazi and not has_ziwei:
         preamble = _SYSTEM_PREAMBLE_BAZI
     elif has_ziwei and not has_bazi:
         preamble = _SYSTEM_PREAMBLE_ZIWEI
@@ -238,8 +258,9 @@ async def stream_completion(
     timeout_seconds = max(config.timeout_seconds, 280.0)
     timeout = httpx.Timeout(timeout_seconds, connect=min(3.0, config.timeout_seconds))
     finish_reason = None
+    saw_done = False
     try:
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, trust_env=False) as client:
+        async with asyncio.timeout(560.0), httpx.AsyncClient(timeout=timeout, follow_redirects=False, trust_env=False) as client:
             for attempt in range(_PROVIDER_RETRY_ATTEMPTS):
                 async with client.stream(
                     "POST",
@@ -280,20 +301,36 @@ async def stream_completion(
                         if not data:
                             continue
                         if data == "[DONE]":
+                            saw_done = True
                             break
                         try:
                             chunk = json.loads(data)
-                        except json.JSONDecodeError:
+                        except json.JSONDecodeError as error:
+                            raise AiProviderError("provider returned malformed stream JSON") from error
+                        if not isinstance(chunk, dict) or "error" in chunk:
+                            raise AiProviderError("provider reported a stream error")
+                        if chunk.get("choices") == [] and "usage" in chunk:
                             continue
                         try:
-                            delta = chunk["choices"][0].get("delta") or {}
+                            delta = chunk["choices"][0].get("delta")
+                            if delta is None:
+                                delta = {}
                             choice_finish = chunk["choices"][0].get("finish_reason")
-                        except (KeyError, IndexError, TypeError, AttributeError):
-                            delta = {}
-                            choice_finish = None
+                        except (KeyError, IndexError, TypeError, AttributeError) as error:
+                            raise AiProviderError("provider returned malformed stream choices") from error
+                        if choice_finish == "length":
+                            raise AiProviderError("provider output truncated (length)")
+                        if choice_finish not in (None, "", "stop"):
+                            raise AiProviderError("provider did not complete the reading")
                         if choice_finish:
                             finish_reason = choice_finish
-                        text = delta.get("content") or ""
+                        if not isinstance(delta, dict):
+                            raise AiProviderError("provider returned invalid stream delta")
+                        text = delta.get("content")
+                        if text is None:
+                            text = ""
+                        if not isinstance(text, str):
+                            raise AiProviderError("provider returned invalid stream content")
                         if text:
                             for kind, segment in think_filter.feed(text):
                                 if segment:
@@ -302,10 +339,14 @@ async def stream_completion(
                         if segment:
                             yield (kind, segment)
                     break
-    except httpx.HTTPError as error:
-        raise AiProviderError("AI provider stream failed") from error
+    except (httpx.HTTPError, TimeoutError) as error:
+        raise AiProviderError("AI provider stream failed or timed out") from error
     if finish_reason == "length":
-        logger.warning("reading output truncated finish_reason=length")
+        raise AiProviderError("provider output truncated (length)")
+    if finish_reason not in (None, "stop"):
+        raise AiProviderError("provider did not complete the reading")
+    if not saw_done:
+        raise AiProviderError("provider stream ended before completion")
 
 
 async def stream_reading(
@@ -472,6 +513,8 @@ def friendly_reading_error(detail: str) -> str:
         return "这段描述触发了内容安全过滤，请换一种说法再试。"
     if "safety violation" in detail:
         return "这次生成的内容超出了输出规范（含确定的吉凶断语或用药、投资指引），已不展示，请换个问法再试。"
+    if "truncated" in detail or "before completion" in detail:
+        return "本次解读中途停止，已显示的内容不完整，请重试。"
     if "budget" in detail:
         return "今日 AI 讲解额度已用完，规则结果仍可正常使用。"
     return "AI 解读这次没有生成，请稍后重试。"

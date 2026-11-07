@@ -21,9 +21,9 @@ _MAX_CHARS = {
 }
 
 _WORK_TITLES = {
-    "dream-interpretation.md": "荣格解梦方法论",
-    "symbol-dictionary.md": "荣格象征词典",
-    "psyche-structure.md": "荣格心灵结构",
+    "dream-interpretation.md": "解梦方法学习笔记",
+    "symbol-dictionary.md": "梦境象征学习笔记",
+    "psyche-structure.md": "心灵结构学习笔记",
 }
 
 
@@ -48,3 +48,12 @@ def skill_profile() -> str:
             title = _WORK_TITLES.get(filename, filename)
             parts.append(f"《{title}》（节选）：\n{body}")
     return "\n\n".join(parts)
+
+
+def source_excerpts() -> dict[str, str]:
+    """Only the actual bounded injected excerpt supports a study-note citation.
+
+    These notes are not authenticated translations of Jung's books. Cards must
+    never elevate their prose to an original author quotation.
+    """
+    return {title: load_reference(filename) for filename, title in _WORK_TITLES.items()}

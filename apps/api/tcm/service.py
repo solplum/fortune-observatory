@@ -20,6 +20,8 @@ from ai_explainer import (
     reserve_daily_budget,
 )
 from reading_agent import stream_completion
+from tcm.lore import source_excerpts
+from verified_sources import adjacent_sources
 from tcm.models import ConsultRequest, ConsultResponse, SourceOut
 from tcm.prompts import STREAM, system_prompt
 
@@ -30,6 +32,9 @@ logger = logging.getLogger("fortune.tcm")
 # 同义词族收全口语面（run-3 实测：心肌梗塞/脑梗/脑卒中/吐血/抽搐/喘不上气 全漏）；
 # 匹配前先规范化（is_emergency），防拆字/零宽/全角绕闸。
 _EMERGENCY_PATTERNS = (
+    "中風", "腦梗", "腦卒中", "腦出血", "呼吸困難", "意識不清", "昏厥",
+    "半身不遂", "偏瘫", "偏癱", "口眼歪斜", "口角歪斜", "一侧无力", "一側無力", "说话不清", "說話不清",
+    "药物过量", "藥物過量", "服药过量", "服藥過量", "吞药", "吞藥", "吃了一瓶", "吃了整瓶", "吃了一整瓶", "吃了一把", "中毒",
     "心梗", "心肌梗死", "心肌梗塞", "心绞痛",
     "中风", "脑梗", "脑梗死", "脑梗塞", "脑卒中", "脑出血", "脑溢血",
     "昏迷", "昏厥", "晕厥", "休克",
@@ -46,9 +51,9 @@ DISCLAIMER = (
 )
 
 _REFERRAL_TEXT = (
-    "我跟你说，这种情况不能拖——你描述的表现可能是急性危重症，别等中医调养，"
-    "也别自己在网上找方子。现在就拨打 120 或直接去急诊，让西医先救命，"
-    "稳定了以后再看中医调理，懂了没有？这一条比什么经方都重要。"
+    "你描述的情况可能需要紧急医疗帮助。请立即拨打当地急救电话（中国大陆为 120），"
+    "不要独自驾车或等待线上问诊。疑似药物过量时不要自行催吐或再服药，保留药品包装交给急救人员；"
+    "疑似卒中时记录症状开始时间，尽快由急救人员评估。"
 )
 
 _ESSAY_CAP = 3600
@@ -65,9 +70,30 @@ def _normalize_signal_text(text: str) -> str:
     return _INVISIBLE_CHARS.sub("", unicodedata.normalize("NFKC", text))
 
 
+# Additional exposure/FAST colloquialisms: match an event, not merely a product
+# name or a number. This is conservative routing, never a safe-dose calculator.
+_POISON = r"(?:农药|農藥|杀虫剂|殺蟲劑|除草剂|除草劑|百草枯|敌敌畏|敵敵畏|老鼠药|老鼠藥|鼠药|鼠藥|洁厕剂|潔廁劑|漂白水|消毒液)"
+_INGEST = r"(?:喝|吞|吃|误服|誤服|误饮|誤飲|误食|誤食)"
+_MEDICINE = r"(?:安眠药|安眠藥|止痛药|止痛藥|药|藥)"
+
+
 def is_emergency(question: str) -> bool:
     normalized = _normalize_signal_text(question)
-    return any(_normalize_signal_text(pattern) in normalized for pattern in _EMERGENCY_PATTERNS)
+    if any(_normalize_signal_text(pattern) in normalized for pattern in _EMERGENCY_PATTERNS):
+        return True
+    if re.search(r"(?:药|藥|安眠|止痛).{0,8}(?:过量|過量|吃多|多吃|超量)|(?:吃多|多吃|超量|过量|過量).{0,8}(?:药|藥|安眠|止痛)|(?:吃|吞|服).{0,8}(?:几十|幾十|十几|十幾|一把|整瓶).{0,4}(?:药|藥|片|颗|顆)", normalized):
+        return True
+    if re.search(_INGEST + r".{0,8}" + _POISON + r"|" + _POISON + r".{0,8}" + _INGEST, normalized):
+        return True
+    # Numeral ingestion: word-boundaries are unreliable for Chinese. The unit
+    # and medicine context prevent e.g. a pack containing twenty tablets from
+    # being mistaken for taking twenty tablets.
+    for match in re.finditer(r"(?:吞|吃|服)(?:下|了|用|药|藥|下了)*([0-9]{1,4})(?:片|粒|颗|顆)(.{0,10})", normalized):
+        if int(match.group(1)) >= 10 and re.search(_MEDICINE, normalized[max(0, match.start() - 8):match.end()]):
+            return True
+    # Sudden FAST-type descriptions, including informal arm/face descriptions.
+    fast = r"(?:嘴歪|嘴巴歪|臉歪|脸歪|胳膊抬不起来|胳膊抬不起來|手臂抬不起来|手臂抬不起來|说不清话|說不清話|讲不清话|講不清話)"
+    return bool(re.search(r"(?:突然|忽然|刚刚|剛剛).{0,18}" + fast, normalized))
 
 
 def _emergency_result() -> ConsultResponse:
@@ -75,27 +101,9 @@ def _emergency_result() -> ConsultResponse:
 
 
 def extract_sources(text: str) -> list[SourceOut]:
-    """从正文提取《著作》引用与邻近引句（流式收尾用），最多 3 条。"""
-    sources: list[SourceOut] = []
-    seen: set[str] = set()
-    for match in re.finditer(r"《([^《》]{2,20})》", text):
-        work = match.group(1).strip()
-        if not work or work in seen:
-            continue
-        window_start = max(0, match.start() - 80)
-        window = text[window_start:min(len(text), match.end() + 80)]
-        quote_match = re.search(r"[“\"「]([^“”\"」]{6,60})[”\"」]", window)
-        if not quote_match:
-            continue
-        quote = quote_match.group(1).strip().strip('"「」『』【】（）()，。；…—')
-        if not quote or quote in seen:
-            continue
-        seen.add(work)
-        seen.add(quote)
-        sources.append(SourceOut(work=f"《{work}》", quote=quote))
-        if len(sources) >= 3:
-            break
-    return sources
+    """Only exact quotations adjacent to a verified study-note title become cards."""
+    return [SourceOut(work=f"《{title}》", quote=quote)
+            for title, quote in adjacent_sources(text, source_excerpts())]
 
 
 def _compose_user(question: str) -> str:
@@ -132,7 +140,7 @@ async def _chat(system: str, user: str) -> str:
     config = _provider()
     if config is None:
         raise AiConfigurationError("AI provider is not configured")
-    # 倪师口径摘录（2 万+字符）+ 要求出方出剂量，生成耗时高于常规解读，
+    # Educational response uses a bounded provider timeout,
     # 固定用长超时（50s < RequestGuard 的 62s AI 门，不冲突）。
     timeout_seconds = max(config.timeout_seconds, 50.0)
     timeout = httpx.Timeout(timeout_seconds, connect=min(3.0, timeout_seconds))
@@ -140,7 +148,10 @@ async def _chat(system: str, user: str) -> str:
         started = time.monotonic()
         response = None
         for attempt in range(_PROVIDER_RETRY_ATTEMPTS):
-            response = await client.post(
+            remaining = 56.0 - (time.monotonic() - started)
+            if remaining <= 0:
+                raise AiProviderError("provider deadline exceeded")
+            response = await asyncio.wait_for(client.post(
                 f"{config.base_url}/chat/completions",
                 headers={
                     "authorization": f"Bearer {config.api_key}",
@@ -155,14 +166,15 @@ async def _chat(system: str, user: str) -> str:
                         {"role": "user", "content": user},
                     ],
                 },
-            )
+                timeout=httpx.Timeout(min(timeout_seconds, remaining), connect=min(3.0, remaining)),
+            ), timeout=remaining)
             if _retry_provider_status(response.status_code) and attempt < _PROVIDER_RETRY_ATTEMPTS - 1:
                 if time.monotonic() - started > 56.0:
                     logger.warning("tcm provider retry skipped: wall clock exhausted attempt=%s", attempt + 1)
                     break
                 logger.warning("tcm provider retryable failure status=%s attempt=%s",
                                response.status_code, attempt + 1)
-                await asyncio.sleep(_PROVIDER_RETRY_BASE_SECONDS * (attempt + 1))
+                await asyncio.sleep(min(_PROVIDER_RETRY_BASE_SECONDS * (attempt + 1), max(0, 56.0 - (time.monotonic() - started))))
                 continue
             break
         try:
@@ -220,7 +232,8 @@ async def stream_consult_events(request: ConsultRequest) -> AsyncIterator[dict]:
                 think_chunks.append(text)
                 yield {"type": "think", "text": text}
                 continue
-            if relayed + len(text) > essay_budget:
+            text = text[:max(0, essay_budget - relayed)]
+            if not text:
                 continue
             relayed += len(text)
             chunks.append(text)
