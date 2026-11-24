@@ -5,14 +5,14 @@
 - `apps/observatory`：React 前端（Vite，五套表情包主题，5173）
 - `apps/api`：FastAPI 后端（排盘/运势/问事/解梦/奇门/AI 解读，8000；app.py 平级导入 security/lore/fortune_core；dreams/ 为解梦模块，qimen/ 为奇门模块）
 - `src/fortune_core`：排盘核心引擎（八字/紫微/七政四余/真太阳时/奇门遁甲）——网站排盘唯一计算源
-- `skills/`：三端 CLI 命理 skill 实体（bazi、ziwei-doushu、dream-interpretation）；另有 `qimen-dunjia` 为**仓库独立副本**（与 `~/.agents/skills/qimen-dunjia` 实体互不引用：本地实体供日常 CLI 使用，仓库副本仅供线上 lore 注入与差分对拍，用户拍板两份独立不 junction）
+- `skills/`：三端 CLI 命理 skill 实体（bazi、ziwei-doushu、dream-interpretation）及线上原典语料库 `mingli-corpus`（1,351 条清洗古籍）；另有 `qimen-dunjia` 与 `nihaixia` 为**仓库独立副本**（与 `~/.agents/skills/` 对应本地实体互不引用：本地实体供日常 CLI 使用，仓库副本仅供线上 lore 注入与差分对拍，用户拍板独立不 junction）
 - `docs/` 整目录是 gitignore 的本地资产（审计报告/计划/交接），不进 git
 
 ## skills/ = 三端 skill 实体（source of truth）
 
 - 实体在仓库内；`~/.agents/skills/<name>` 是指向仓库的 junction，`~/.claude/skills` 与 `~/.codex/skills` 再链 `~/.agents/skills`，ZCode 直读 `~/.agents/skills`
 - 改 skill 一律改仓库内文件，禁止把 junction 当普通目录删改；建 junction 用 PowerShell `New-Item -ItemType Junction`（Git Bash 的 mklink 会被 MSYS 参数转换搅坏）
-- `skills/ziwei-doushu` 首次使用先 `npm install`（node_modules 已 gitignore）；`references/*.md` 由 `scripts/dump_refs.ts` 生成，勿手改；上游源码在 `vendor/`（Renhuai123/ziwei-doushu@88194a4，MIT，iztro 2.5.8）
+- `skills/ziwei-doushu` 首次使用先 `npm install`（node_modules 已 gitignore）；`references/patterns.md` 与 `references/sihua-tables.md` 由 `scripts/dump_refs.ts` 生成，勿手改；`references/classics.md` 已改由洁净《紫微斗数全书》原典单独维护，禁止从 `vendor/classics/` 覆盖；上游源码在 `vendor/`（Renhuai123/ziwei-doushu@88194a4，MIT，iztro 2.5.8）
 
 ## 排盘口径
 

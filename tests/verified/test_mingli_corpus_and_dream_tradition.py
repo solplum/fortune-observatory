@@ -86,6 +86,8 @@ def test_traditional_dream_corpus_and_citations() -> None:
     excerpts = dream_lore.source_excerpts("梦见牙齿掉了几颗")
     assert len(excerpts) >= 2
     assert any(b in excerpts for b in ("梦林玄解", "周公解梦", "断梦秘书"))
+    assert "传统占梦总纲" in excerpts
+    assert "中国传统占梦核心心法" in excerpts["传统占梦总纲"]
 
     # Pick an actual sentence from matched excerpts and verify extract_sources works & rejects fakes
     for book, body in excerpts.items():

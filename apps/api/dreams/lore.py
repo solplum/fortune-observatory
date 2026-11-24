@@ -63,7 +63,7 @@ def _cached_mappings() -> dict[str, Any]:
 @lru_cache(maxsize=1)
 def _methodology_doc() -> str:
     try:
-        return (SKILL_REFS_DIR / "methodology.md").read_text(encoding="utf-8")[:2400].strip()
+        return (SKILL_REFS_DIR / "classical-methodology.md").read_text(encoding="utf-8")[:2400].strip()
     except OSError:
         return ""
 

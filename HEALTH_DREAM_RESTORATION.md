@@ -30,3 +30,12 @@ Limits: emergency keyword recognition is conservative, not a medical diagnostic
 system. Prompt constraints cannot guarantee every possible provider output.
 Source-card verification does not independently authenticate the historical
 corpus or guarantee the entire generated essay is factually correct.
+
+## 2026-11-24 Update
+
+- Online dream interpretation (`apps/api/dreams/`) switched to
+  `skills/dream-interpretation/` (`lzl-dream`, 3,505 cleaned classical records
+  in `references/corpus/*.jsonl` plus `references/classical-methodology.md`),
+  retaining exact adjacent quotation verification (`verified_sources.adjacent_sources`)
+  and provider-free crisis triage.
+- Online TCM continues using the two reviewed non-prescription concept excerpts.

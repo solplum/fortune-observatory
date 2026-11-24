@@ -51,7 +51,7 @@ fun DreamScreen(nav: NavController) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
-            "写下你的梦境（4–2000 字），AI 会结合荣格与传统解梦口径给出流式解读；若涉及自伤等信号，会直接展示转介建议。",
+            "写下你的梦境（4–2000 字），AI 会结合《梦林玄解》《周公解梦》等传统占梦古籍给出流式解读；若涉及自伤等信号，会直接展示转介建议。",
             fontSize = 12.5.sp,
             color = DestinyColors.Muted,
         )
