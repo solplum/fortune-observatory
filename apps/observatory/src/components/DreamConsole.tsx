@@ -97,7 +97,7 @@ export function DreamConsole({ onSave }: {
   return <section className="task-view dream-view" id="dream" aria-labelledby="dream-title">
     <header className="task-heading">
       <h1 id="dream-title">解梦</h1>
-      <p>先靠梦书。资料不落服务器。</p>
+      <p>依《梦林玄解》《周公解梦》等古籍占梦推类。资料不落服务器。</p>
     </header>
     <div className="dream-console">
       <div className="dream-composer">
@@ -108,7 +108,7 @@ export function DreamConsole({ onSave }: {
             maxLength={2000}
             value={dream}
             onChange={(event) => setDream(event.target.value)}
-            placeholder="发生了什么、中间怎么转、有没有做完。"
+            placeholder="梦见了什么人或物、方位动向、怎么收尾；记得也可写做梦时段与醒后感受。"
           />
         </label>
         <div className="dream-examples">

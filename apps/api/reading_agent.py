@@ -19,6 +19,7 @@ from pathlib import Path
 import httpx
 
 from lore import QIZHENG_LORE
+from mingli_corpus import retrieve_for_facts
 
 from ai_explainer import (
     _PROVIDER_RETRY_ATTEMPTS,
@@ -121,7 +122,7 @@ USER_DATA_JSON.facts 是服务端核验过的盘面事实；涉及用户盘面�
 
 _SYSTEM_PREAMBLE_QIZHENG = """你是「看运」的七政四余传统文化解读助手。
 USER_DATA_JSON.facts 是服务端核验过的盘面事实；命宫、星体、宿度、恩难仇用与行限均以 facts 为准，禁止补算或虚构。
-只使用七政四余体系，不把紫微四化、十四主星或八字十神当作七政规则。给出的框架是现代概括，不是古籍逐字引文；没有可核对的原文时不得编造引文、篇名或页码。
+只使用七政四余体系，不把紫微四化、十四主星或八字十神当作七政规则。优先援引随盘附带的《张果星宗》《星学大成》《乾元秘旨》原典条目并注明篇名；未提供的典籍引文、篇名或页码严禁编造。
 """ + _SYSTEM_COMMON_TAIL
 
 _SYSTEM_PREAMBLE_MULTI = """你是「看运」的传统命理文化解读助手。
@@ -137,13 +138,21 @@ USER_DATA_JSON.facts 是服务端核验过的盘面事实；涉及用户盘面�
 """ + _SYSTEM_COMMON_TAIL
 
 
-def build_reading_system(bundle_types: set[str]) -> str:
+def build_reading_system(
+    bundle_types: set[str],
+    *,
+    facts: list[AiFact] | None = None,
+    question: str = "",
+) -> str:
     """按 facts 的 bundle 组合选择体系提示词与语料。
 
     单体系（新流程）：只含 bazi.chart → 八字版；仅紫微系 → 紫微版；
     双体系并存（旧合参调用）→ 合参版（向后兼容，前台已不发起）。
     """
     corpus = corpus_for_bundle_types(bundle_types)
+    dynamic_excerpts = retrieve_for_facts(bundle_types, facts, question) if (facts or "qizheng.chart" in bundle_types) else ""
+    if dynamic_excerpts and (len(corpus) + len(dynamic_excerpts) <= _CORPUS_CHAR_BUDGET):
+        corpus = f"{corpus}\n\n{dynamic_excerpts}" if corpus else dynamic_excerpts
     has_ziwei = any(
         t in _ZIWEI_BUNDLE_TYPES or t.startswith("domain.")
         for t in bundle_types
@@ -360,7 +369,7 @@ async def stream_reading(
     config = get_provider_config()
     if config is None:
         raise AiProviderError("AI provider is not configured")
-    system = build_reading_system(bundle_types)
+    system = build_reading_system(bundle_types, facts=facts, question=question)
     user = build_reading_user(question, facts)
     async for kind, segment in stream_completion(system=system, user=user, config=config, history=history):
         yield (kind, segment)

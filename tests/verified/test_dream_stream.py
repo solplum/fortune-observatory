@@ -56,8 +56,8 @@ def _install_sse_client(monkeypatch, body: bytes) -> None:
 
 def test_dream_stream_events_are_strings(monkeypatch):
     body = _sse([
-        "<think>", "组织荣格口径", "</think>",
-        "梦见蛇，", "《解梦方法学习笔记》：「与弗洛伊德（Freud）把梦视为伪装后的愿望满足不同」。",
+        "<think>", "核对梦林玄解", "</think>",
+        "梦见蛇，", "《梦林玄解》：「梦鸟食龙蛇。凶，主丧子毁誉。」",
     ])
     _install_sse_client(monkeypatch, body)
     monkeypatch.setattr(dream_service, "_provider", lambda: FakeConfig())

@@ -60,9 +60,9 @@ def compose_query(dream: str, answers: list) -> str:
 def heuristic_questions(dream: str) -> list[QuestionOut]:
     snippet = re.sub(r"\s+", "", dream)[:16] or "这场梦"
     return [
-        QuestionOut(id="finished", label=f"「{snippet}」做到结尾了吗？"),
-        QuestionOut(id="agency", label="走进这个场面，是你自己要去，还是被卷进去的？"),
-        QuestionOut(id="fear_of", label="最怕的是哪一幕，或哪个人？"),
+        QuestionOut(id="finished", label=f"「{snippet}」最后怎么收尾，大概半夜还是天亮前做的？"),
+        QuestionOut(id="agency", label="梦里人或物的方位动向怎么变（上下进退、谁先动手）？"),
+        QuestionOut(id="fear_of", label="醒来后心口感觉如何，最令你挂怀的是哪一幕？"),
     ]
 
 
@@ -187,7 +187,7 @@ def _split_think(text: str) -> tuple[str, str]:
     return thinking.strip(), body
 
 
-def _parse_interpret(text: str) -> InterpretResponse:
+def _parse_interpret(text: str, *, query: str = "") -> InterpretResponse:
     thinking, text = _split_think(text)
     stripped = text.strip()
     if stripped.startswith("```json") or stripped.startswith("```\n"):
@@ -214,12 +214,12 @@ def _parse_interpret(text: str) -> InterpretResponse:
         raise AiProviderError("empty essay")
     essay = essay[:3600]
     # Metadata alone is not evidence: require the cited quote in the shown essay.
-    return InterpretResponse(essay=essay, sources=extract_sources(essay), thinking=thinking[:2000])
+    return InterpretResponse(essay=essay, sources=extract_sources(essay, query=query), thinking=thinking[:2000])
 
 
-def extract_sources(text: str) -> list[SourceOut]:
+def extract_sources(text: str, *, query: str = "") -> list[SourceOut]:
     return [SourceOut(work=f"《{title}》", quote=quote, channel="字面")
-            for title, quote in adjacent_sources(text, source_excerpts())]
+            for title, quote in adjacent_sources(text, source_excerpts(query))]
 
 
 async def interpret_dream_request(request: InterpretRequest) -> InterpretResponse:
@@ -231,7 +231,8 @@ async def interpret_dream_request(request: InterpretRequest) -> InterpretRespons
         raise AiConfigurationError("AI provider is not configured")
     # 转介路径不消耗 LLM，预算只对真实生成扣（try 外扣，超限抛 429）。
     reserve_daily_budget(config.daily_limit)
-    profile = skill_profile()
+    query = compose_query(request.dream, request.answers)
+    profile = skill_profile(query)
     system = f"{SYSTEM}\n\n{profile}" if profile else SYSTEM
     lines = [f"梦：{request.dream[:2000]}"]
     extra = [f"{item.question}：{item.answer}" for item in request.answers if item.answer]
@@ -247,15 +248,16 @@ async def interpret_dream_request(request: InterpretRequest) -> InterpretRespons
         raise
     except Exception as error:
         raise AiProviderError("dream essay failed") from error
-    parsed = _parse_interpret(raw)
+    parsed = _parse_interpret(raw, query=query)
     return parsed
 
 
 # 流式版：不再要求 JSON 回包，直接输出解梦正文；引用来源在收尾时后端提取。
 _INTERPRET_STREAM = (
     "直接输出解梦正文（Markdown 分节书写），不要 JSON、不要代码块。"
-    "只能引用实际注入的学习笔记标题和逐字原句，格式为《笔记标题》：“原句”。不可称为荣格或弗洛伊德的原话，不能编造书名或引文，没有合适引文就不引用。"
-    "结尾固定两节：「## 可以先做」（2-3 条具体、可执行的动作）与「## 注意」（1 条单句提醒）。"
+    "只能引用本次实际注入的占梦古籍书名与逐字原句，格式严格写成 《书名》：“逐字原句”（例如《梦林玄解》《断梦秘书》《周公解梦》《古今图书集成·梦部》）。"
+    "严禁编造未提供的古文或书名，无贴合原句可引时以传统物象推类作白话讲解即可。"
+    "结尾固定两节：「## 可以先做」（2-3 条具体、可执行或传统安神稳态动作）与「## 注意」（1 条单句提醒）。"
 )
 
 
@@ -269,7 +271,8 @@ async def stream_interpret_events(request: InterpretRequest) -> AsyncIterator[di
     if config is None:
         raise AiConfigurationError("AI provider is not configured")
     reserve_daily_budget(config.daily_limit)
-    profile = skill_profile()
+    query = compose_query(request.dream, request.answers)
+    profile = skill_profile(query)
     system = f"{SYSTEM}\n\n{profile}" if profile else SYSTEM
     lines = [f"梦：{request.dream[:2000]}"]
     extra = [f"{item.question}：{item.answer}" for item in request.answers if item.answer]
@@ -298,4 +301,4 @@ async def stream_interpret_events(request: InterpretRequest) -> AsyncIterator[di
     essay = "".join(chunks).strip()
     if not essay:
         raise AiProviderError("empty essay")
-    yield {"type": "done", "sources": [item.model_dump(mode="json") for item in extract_sources(essay)]}
+    yield {"type": "done", "sources": [item.model_dump(mode="json") for item in extract_sources(essay, query=query)]}

@@ -12,11 +12,14 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
+
+from mingli_corpus import retrieve_for_facts
 
 GENERAL_STYLE_GUIDE = (
     "【专业断语风格】在遵守上述全部禁令的前提下：优先输出有信息量的传统命理断语，"
     "而不是安慰性的泛泛之谈。每个判断必须锚定 facts 中的具体宫位、干支、星曜、四化或大限，"
-    "关键断语用括号标注传统出处（如《紫微斗数全书·四化论》《骨髓赋》《穷通宝典》）。"
+    "关键断语用括号标注实际提供出处的典籍（如《紫微斗数全书》《滴天髓阐微》《穷通宝鉴》《张果星宗》）。"
     "术语第一次出现时仍需一句白话解释。facts 中没有的星曜、宫位、干支不得虚构。"
 )
 
@@ -43,12 +46,12 @@ ZIWEI_LORE = """【紫微斗数解读框架】按此顺序组织分析：
 - 破军：化耗，开创变动，先散后聚破而后立；宜技术专长立身，忌安于现状。
 
 【四化落宫速断】命宫=自身课题；兄弟=同辈合伙人；夫妻=婚姻；子女=晚辈作品；财帛=现金流；疾厄=身体；迁移=外出机遇；交友=人脉圈层；官禄=事业；田宅=家宅财库；福德=精神享受；父母=长辈文书。
-【宫位规则】空宫借对宫主星论（需说明是借宫）；主星落陷按减力解读并给建设性方向（"落陷之人有'不甘'二字推动，反能大成"——《全书·命宫》）。"""
+【宫位规则】空宫借对宫主星论（需说明是借宫）；主星落陷按减力解读并给建设性方向（依《紫微斗数全书》及三方四正配星综合论之）。"""
 
 BAZI_LORE = """【八字解读框架】按此顺序组织分析：
-1. 日主旺衰：看日干得令（月支）、得地（坐支通根）、得势（同党多寡）定身旺身弱。
-2. 十神格局：月令透干定格局，用神相神有力无力定格局高低（《子平真诠》）。
-3. 喜用忌仇：身弱喜印比（生扶），身旺喜官杀（克）、食伤（泄）、财（耗）；调候参考《穷通宝典》寒暖燥湿。
+1. 日主旺衰：看日干得令（月支五行旺相/受生扶，非仅长生帝旺）、得地（坐支及他支通根）、得势（干透印比）定身旺身弱。
+2. 调候与格局：《穷通宝鉴》重寒暖燥湿调候，与《子平真诠》月令格局（配相神）、《滴天髓》扶抑病药区分运用，不机械混谈。
+3. 喜用忌仇：身弱多喜印比（生扶），身旺多喜官杀（克）、食伤（泄）、财（耗）；极旺宜泄、真从须全局气势顺从。
 4. 大运流年：大运为纲（十年主旋律，天干管前五年、地支管后五年），流年为目（当年应期）。
 
 【十神心性速断】
@@ -94,10 +97,10 @@ PROJECT_ROOT = _API_DIR.parents[1]
 
 # (标题, 相对路径)；单文件超限时截断保护预算
 _SKILL_SOURCES: tuple[tuple[str, str], ...] = (
-    ("紫微斗数·典籍断语（骨髓赋/全书/全集）", "skills/ziwei-doushu/references/classics.md"),
+    ("紫微斗数·典籍断语（紫微斗数全书）", "skills/ziwei-doushu/references/classics.md"),
     ("紫微斗数·格局", "skills/ziwei-doushu/references/patterns.md"),
     ("紫微斗数·四化表（倪海厦《天纪》口径）", "skills/ziwei-doushu/references/sihua-tables.md"),
-    ("八字·典籍摘要（穷通宝典/子平真诠）", "skills/bazi/references/classical-texts.md"),
+    ("八字·典籍摘要（穷通宝鉴/子平真诠）", "skills/bazi/references/classical-texts.md"),
     ("八字·大运流年规则", "skills/bazi/references/dayun-rules.md"),
     ("八字·五行生克表", "skills/bazi/references/wuxing-tables.md"),
     ("八字·神煞表", "skills/bazi/references/shensha-table.md"),
@@ -149,7 +152,12 @@ _SKILL_RULE = (
 )
 
 
-def lore_for_bundle_types(bundle_types: set[str]) -> str:
+def lore_for_bundle_types(
+    bundle_types: set[str],
+    *,
+    facts: list[Any] | None = None,
+    question: str = "",
+) -> str:
     """Select all relevant frameworks, with canon limited to the actual systems."""
     systems: set[str] = set()
     if "bazi.chart" in bundle_types:
@@ -160,5 +168,8 @@ def lore_for_bundle_types(bundle_types: set[str]) -> str:
     parts = list(dict.fromkeys(_LORE_BY_BUNDLE[t] for t in sorted(bundle_types) if t in _LORE_BY_BUNDLE))
     if canon:
         parts.append(f"{_SKILL_RULE}\n\n{canon}")
+    dynamic_excerpts = retrieve_for_facts(bundle_types, facts, question) if (facts or "qizheng.chart" in bundle_types) else ""
+    if dynamic_excerpts:
+        parts.append(f"【按盘实查古籍原典（优先锚定盘面征引）】\n{dynamic_excerpts}")
     parts.append(GENERAL_STYLE_GUIDE)
     return "\n\n".join(parts)

@@ -6,8 +6,8 @@
 
 - 三盘排盘：四柱八字 / 紫微斗数（十二宫）/ 七政四余（JPL 星历）
 - 运势：今日/明日/周/月，真太阳时口径
-- 问事：四板块（事业/感情/健康/财富）深度解读，AI 事实锚定 + 典籍语料（`apps/api/lore.py`），SSE 流式输出（思考链可折叠）
-- 解梦：RAG 语料 + AI 散文输出
+- 问事：四板块（事业/感情/健康/财富）深度解读，AI 事实锚定 + 三体系原典检索（`apps/api/lore.py` + `apps/api/mingli_corpus.py`），SSE 流式输出（思考链可折叠）
+- 解梦：纯传统占梦派（《梦林玄解》《断梦秘书》《周公解梦》《古今图书集成·梦部》3,505 条原典检索 + 时令五行）+ AI 散文输出与真实出处核验
 - 奇门遁甲：时家转盘（mainline-cn-v1）确定性排盘（`src/fortune_core/qimen`）+ 流式解读（`apps/api/qimen/`，口径来自 `skills/qimen-dunjia`）
 - 中医问诊：倪海厦经方口径自由问诊 + SSE 流式输出（`apps/api/tcm/`，口径来自 `skills/nihaixia` 节选注入；急症信号确定性转介（不打 LLM）、免责框收尾强校验；2026-09-23 拍板平台自用，输出红线词族拦截已移除）
 - 全部 AI 流式端点（问事/解梦/奇门/中医）挂在服务端会话注册表：断连不中止生成、重试/重连先回放再续播、预算只在全新生成时扣
@@ -40,6 +40,6 @@ AI 解读需要环境变量：`FORTUNE_AI_API_KEY` / `FORTUNE_AI_MODEL` / `FORTU
 | 路径 | 内容 |
 |---|---|
 | `apps/observatory` | React 前端（五套表情包主题） |
-| `apps/api` | FastAPI 后端（含 `lore.py` 解话语料、`reading_agent.py` 流式解读引擎、`dreams/` 解梦模块、`qimen/` 奇门模块、`tcm/` 中医问诊模块） |
+| `apps/api` | FastAPI 后端（含 `lore.py`、`mingli_corpus.py` 按盘原典检索、`reading_agent.py` 流式解读引擎、`dreams/` 传统占梦模块、`qimen/` 奇门模块、`tcm/` 中医问诊模块） |
 | `src/fortune_core` | 排盘引擎（八字/紫微/七政四余/真太阳时/奇门遁甲；`docs/` 下有差分审计与口径 ADR，本地资产不入 git） |
-| `skills/` | CLI skill：bazi、ziwei-doushu、dream-interpretation（三端实体）+ qimen-dunjia、nihaixia（仓库独立副本） |
+| `skills/` | CLI skill 与语料：bazi、ziwei-doushu、mingli-corpus（1,351 条清洗原典）、dream-interpretation（lzl-dream 传统占梦 3,505 条）+ qimen-dunjia、nihaixia |

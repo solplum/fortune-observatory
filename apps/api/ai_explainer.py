@@ -590,7 +590,7 @@ async def explain_with_ai(request: AiExplainRequest) -> AiExplainResponse:
         "accept": "application/json",
     }
     timeout = httpx.Timeout(config.timeout_seconds, connect=min(3.0, config.timeout_seconds))
-    lore = lore_for_bundle_types(bundle_types)
+    lore = lore_for_bundle_types(bundle_types, facts=facts, question=request.question)
     try:
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, trust_env=False) as client:
             if not request.split_questions:

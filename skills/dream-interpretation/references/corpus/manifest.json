@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "built_at": "2026-11-24T06:09:02Z",
+  "total_records": 3505,
+  "books": {
+    "梦林玄解": 647,
+    "断梦秘书": 929,
+    "周公解梦": 952,
+    "古今图书集成·梦部": 965,
+    "周礼·占梦": 1,
+    "潜夫论·梦列": 3,
+    "列子·周穆王": 2,
+    "黄帝内经·灵枢": 1,
+    "论衡·订鬼": 1,
+    "阿难七梦经": 1,
+    "道藏·黄帝龙首经": 1,
+    "道藏·洞玄灵宝道学科仪": 1,
+    "道藏·法海遗珠": 1
+  },
+  "layers": {
+    "theory": 119,
+    "omen": 2519,
+    "literature": 100,
+    "case": 764,
+    "rang": 3
+  },
+  "files": {
+    "menglin_xuanjie.jsonl": {
+      "count": 647,
+      "bytes": 488262,
+      "sha256": "53cea9466f8de4e2c2d377738c8d0f152d7ecba8ac50f01515903dc017c4bb5e",
+      "books": {
+        "梦林玄解": 647
+      },
+      "layers": {
+        "theory": 44,
+        "omen": 603
+      }
+    },
+    "duanmeng_mishu.jsonl": {
+      "count": 929,
+      "bytes": 547826,
+      "sha256": "641492168384f34e7bb6fabddaf57e3a1c088cc4e9d4da2129bbdac277e05836",
+      "books": {
+        "断梦秘书": 929
+      },
+      "layers": {
+        "omen": 929
+      }
+    },
+    "zhougong_27.jsonl": {
+      "count": 952,
+      "bytes": 477554,
+      "sha256": "43885ecdd33a4fb6814d298a40ff904c6cda6db5b68772745f1673184893ab24",
+      "books": {
+        "周公解梦": 952
+      },
+      "layers": {
+        "theory": 1,
+        "omen": 951
+      }
+    },
+    "gujin_mengbu.jsonl": {
+      "count": 965,
+      "bytes": 1400446,
+      "sha256": "1798076bb279919efa8af471f15672b37aee794b46f723c08a4d15f913f2a2d3",
+      "books": {
+        "古今图书集成·梦部": 965
+      },
+      "layers": {
+        "theory": 65,
+        "omen": 36,
+        "literature": 100,
+        "case": 764
+      }
+    },
+    "classics_theory.jsonl": {
+      "count": 12,
+      "bytes": 33117,
+      "sha256": "ee20335f7c06780209ec48e0bc475ccac61fc74c4fd4bd94696fad06ecf14b3f",
+      "books": {
+        "周礼·占梦": 1,
+        "潜夫论·梦列": 3,
+        "列子·周穆王": 2,
+        "黄帝内经·灵枢": 1,
+        "论衡·订鬼": 1,
+        "阿难七梦经": 1,
+        "道藏·黄帝龙首经": 1,
+        "道藏·洞玄灵宝道学科仪": 1,
+        "道藏·法海遗珠": 1
+      },
+      "layers": {
+        "theory": 9,
+        "rang": 3
+      }
+    }
+  },
+  "sources": [
+    {
+      "name": "梦林玄解（十六部类词典+卷首序论）",
+      "upstream": "https://github.com/ycc77cn/skills",
+      "license": "MIT"
+    },
+    {
+      "name": "梦林玄解·卷之首占繇（观天地之会/辨二气之乘/审三辰之象）",
+      "upstream": "https://zh.wikisource.org/wiki/夢林玄解/夢林玄解卷之首",
+      "license": "Public Domain"
+    },
+    {
+      "name": "断梦秘书（中编九类）",
+      "upstream": "https://github.com/GaoRenYouShu/XuanJiPaiPan",
+      "license": "MIT"
+    },
+    {
+      "name": "古本周公解梦二十七类（951句+卷首诗）",
+      "upstream": "https://github.com/GaoRenYouShu/XuanJiPaiPan & https://github.com/garychowcmu/daizhigev20",
+      "license": "MIT / Public Domain"
+    },
+    {
+      "name": "钦定古今图书集成·历象汇编·庶徵典·梦部（第144-152卷）",
+      "upstream": "https://zh.wikisource.org/wiki/欽定古今圖書集成/曆象彙編/庶徵典/夢部",
+      "license": "Public Domain"
+    },
+    {
+      "name": "周礼·占梦 / 潜夫论·梦列 / 列子·周穆王 / 灵枢·淫邪发梦 / 论衡·订鬼 / 阿难七梦经",
+      "upstream": "https://github.com/garychowcmu/daizhigev20",
+      "license": "Public Domain"
+    },
+    {
+      "name": "道藏占梦与梦禳（黄帝龙首经/洞玄灵宝道学科仪/法海遗珠）",
+      "upstream": "https://github.com/kanripo",
+      "license": "Public Domain"
+    }
+  ],
+  "coverage_notes": [
+    "《梦林玄解》当前收录卷首序论、占繇三篇正文与7部16类梦占辞条；其余梦占卷与梦禳正文如后续获得公版干净校本可继续扩充。",
+    "《断梦秘书》中编十二地支类当前收录子至申九类；酉饮食、戌器物、亥珍宝三类公开文本暂缺。",
+    "《周公解梦》二十七类951句完整收录并保留原刻异文校注。",
+    "《古今图书集成·梦部》第144至152卷全数清洗分块入库，涵括汇考、总论、艺文、历代纪事六卷、杂录与外编。"
+  ]
+}

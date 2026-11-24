@@ -22,13 +22,13 @@
 
 ## AI 解读层
 
-- `apps/api/lore.py` = 分体系解话语料（十四主星/四化论/十神旺衰/七政恩难仇用/运势断法），按 bundle_type 注入 system prompt；lore 只提供通识断语，禁止参与任何排盘计算
-- 断语权威 = `skills/*/references` 原文整包（`lore.py: skill_canon()` 注入，含 SKILL.md 第三阶段分析框架）；SKILL.md 无 LICENSE，原样收录
+- `apps/api/lore.py` + `apps/api/mingli_corpus.py` = 分体系解话语料与按盘实查古籍原典检索（《穷通宝鉴》120/120、《子平真诠》《滴天髓》《紫微斗数全书》《张果星宗》等 1,351 条清洗语料，存放在 `skills/mingli-corpus/`），严格按 bundle_type 隔离注入，禁止参与排盘计算；`skills/ziwei-doushu/references/classics.md` 已替换自《紫微斗数全书》洁净原文（剥离伪古文条目）
+- 断语权威 = `skills/*/references` 原文（`lore.py: skill_canon()`）＋ `mingli_corpus.retrieve_for_facts()` 按 `facts` 精确召回（紫微默认隔离 `feixing_reference`）
 - facts 上限 24 条 × 400 字符（2026-08-31 由 16×280 放宽，签名 token 上限同步 48K；组装侧一律 `text[:400]` 截断）；summary 上限 3600 字；~~输出红线~~ **2026-09-23 拍板（平台自用）：确定性断语/用药/投资三族输出红线整体移除**（原 `ai_explainer.safety_violation()` 全链删除），AI 输出不做词族拦截；自伤转介（解梦）与急症转介（中医 `is_emergency`）是人身安全路由，保留勿删
 - 流式解读引擎 = `apps/api/reading_agent.py`（skill 原典内联 + 流式 + `_ThinkFilter` 拆 think 链）；SSE 端点 `POST /v1/ai/reading` 与 `/v1/dreams/interpret/stream`、`/v1/qimen/interpret/stream`、`/v1/tcm/consult/stream`（2026-09-23 起三条也挂 StreamSession 注册表，`generate_events_into_session` 通用版）。生成挂在服务端 StreamSession 注册表：断连不中止生成、同 stream_key 重连先回放再续播、预算只在全新生成时扣——改流式管道不得破坏这份续传契约
 - 前端流式消费统一走 `apps/observatory/src/streamReading.ts`：打字机节奏器分 displayText（渲染层）与 text（真值层），缓存/持久化只能用 text；思考折叠条 = `ThinkingTrace`；问事聊天跨页签存活靠 DomainAnalysisConsole 的 chatTurns 模块级注册表
 - AI 超时三层勿混用：provider 单次调用默认 40s、上限 55s（env `FORTUNE_AI_TIMEOUT_SECONDS`）；非流式端点被 RequestGuard 的 ai 门 62s 硬顶，explain/解梦的 provider 重试自带 56s 墙钟收手（改任何一层都要对齐另外两层）；流式路径（reading_agent.py）上游读超时 280s，另 SSE 心跳 20s/续传 ping 10s。AI 日预算按北京时间零点日切，429 的 Retry-After 动态算到零点
-- 解梦口径 = `dreams/lore.py` 读 `skills/dream-interpretation/references`（方法论全文+心灵结构核心+象征词典）；自伤叙述（梦正文与追问回答都查）确定性转介不走 LLM；对照命盘（overlay）已下线，请求带 overlay/context_tokens 一律 422；`dreams/service.py` 非流式固定 ≥50s 长超时（在 RequestGuard 62s AI 门内）
+- 解梦口径 = 纯传统占梦派：`dreams/lore.py` 复用 `skills/dream-interpretation/scripts/dream_query.py` 与 `references/corpus/*.jsonl`（3,505 条清洗古籍：《梦林玄解》《断梦秘书》《周公解梦》《古今图书集成·梦部》等）按梦象动态召回＋今日时令五行，`verified_sources.adjacent_sources` 逐字核验《书名》：“原句”出处；自伤叙述（梦正文与追问回答都查）确定性转介不走 LLM；对照命盘（overlay）已下线，请求带 overlay/context_tokens 一律 422；`dreams/service.py` 非流式固定 ≥50s 长超时（在 RequestGuard 62s AI 门内）
 - 奇门口径 = `qimen/lore.py` 读仓库内 `skills/qimen-dunjia/references`（ruleset/yongshen/geju/examples 全量注入，interview.md 不注入——网页表单替代访谈）；链路两步：`POST /v1/qimen/chart`（确定性排盘，零预算）→ 前端渲染盘面卡后把整张盘面原样回传 `POST /v1/qimen/interpret/stream`（流式解读，budget 校验同解梦；端点已接 StreamSession 注册表）；流式 AI 路径注册在 `security.py` 的 `_STREAMING_AI_PATHS`；输出红线已于 2026-09-23 移除（见上条），涉财措辞的 prompt 预防性约束仍在
 
 ## 生产部署

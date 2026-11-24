@@ -59,7 +59,7 @@ def test_tcm_exact_adjacent_attributed_sources():
 
 def test_dream_real_injected_excerpt_only():
     title, body = next(iter(dream_excerpts().items()))
-    quote = '与弗洛伊德（Freud）把梦视为伪装后的愿望满足不同'
+    quote = '占梦掌其岁时观天地之会，辨阴阳之气'
     assert quote in body
     assert dream.extract_sources(f'《{title}》：“{quote}”')
     assert not dream.extract_sources(f'《梦的解析》：“{quote}”')
